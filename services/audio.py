@@ -18,15 +18,47 @@ def convert_audio_format(audio_data: bytes, input_format: str = "wav") -> Tuple[
     
     Args:
         audio_data: Raw audio bytes
-        input_format: Input audio format (wav, mp3, etc.)
+        input_format: Input audio format (wav, mp3, webm, etc.)
     
     Returns:
         Tuple of (audio_array, sample_rate)
     """
     audio_io = io.BytesIO(audio_data)
     
-    # Load audio using librosa (handles various formats)
-    y, sr = librosa.load(audio_io, sr=None)
+    # For WebM and other formats that librosa might struggle with,
+    # use pydub to convert to WAV first, then load with librosa
+    if input_format.lower() in ["webm", "ogg", "m4a", "mp3"]:
+        try:
+            # Use pydub to convert to WAV format
+            audio_segment = AudioSegment.from_file(audio_io, format=input_format.lower())
+            # Export to WAV bytes
+            wav_io = io.BytesIO()
+            audio_segment.export(wav_io, format="wav")
+            wav_io.seek(0)
+            # Now load with librosa
+            y, sr = librosa.load(wav_io, sr=None)
+        except Exception as e:
+            # Fallback: try librosa directly (requires ffmpeg)
+            audio_io.seek(0)
+            try:
+                y, sr = librosa.load(audio_io, sr=None)
+            except Exception as e2:
+                raise ValueError(f"Failed to load audio format '{input_format}': {str(e)}. Original error: {str(e2)}")
+    else:
+        # For WAV and other formats, use librosa directly
+        try:
+            y, sr = librosa.load(audio_io, sr=None)
+        except Exception as e:
+            # If direct load fails, try with pydub as fallback
+            try:
+                audio_io.seek(0)
+                audio_segment = AudioSegment.from_file(audio_io, format=input_format.lower())
+                wav_io = io.BytesIO()
+                audio_segment.export(wav_io, format="wav")
+                wav_io.seek(0)
+                y, sr = librosa.load(wav_io, sr=None)
+            except Exception as e2:
+                raise ValueError(f"Failed to load audio: {str(e)}. Fallback error: {str(e2)}")
     
     return y, sr
 
