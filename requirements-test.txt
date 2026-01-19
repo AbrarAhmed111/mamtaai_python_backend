@@ -1,0 +1,11 @@
+# Test dependencies
+pytest==7.4.3
+pytest-asyncio==0.21.1
+httpx==0.25.1
+soundfile==0.12.1
+numpy>=1.26.0
+
+# Include main dependencies for test fixtures
+librosa==0.10.1
+noisereduce==2.0.1
+
