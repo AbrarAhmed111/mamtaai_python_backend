@@ -169,8 +169,11 @@ class BabyCryClassifier:
         X = np.array(X)
         y = np.array(y)
         
-        # Encode labels
-        self.label_encoder.fit(self.cry_types)
+        # Encode labels based on data (avoid mismatches when dataset has fewer classes)
+        labels_in_data = sorted(set(y))
+        if self.cry_types:
+            labels_in_data = [label for label in self.cry_types if label in labels_in_data]
+        self.label_encoder.fit(labels_in_data)
         y_encoded = self.label_encoder.transform(y)
         
         # Store feature names for reference
@@ -233,7 +236,7 @@ class BabyCryClassifier:
             "cross_val_mean": float(cv_scores.mean()),
             "cross_val_std": float(cv_scores.std()),
             "num_features": int(X.shape[1]),
-            "num_classes": len(self.cry_types)
+            "num_classes": len(self.label_encoder.classes_)
         }
         
         return {
@@ -450,3 +453,35 @@ def set_model(classifier: BabyCryClassifier, model_path: Optional[str] = None):
     global _current_model, _current_model_path
     _current_model = classifier
     _current_model_path = model_path
+
+
+def get_model_metadata() -> Dict:
+    """
+    Return metadata for the currently loaded model.
+    """
+    global _current_model, _current_model_path
+    try:
+        model = get_model()
+    except ValueError:
+        return {
+            "available": False,
+            "model_path": None,
+            "model_type": None,
+            "version": None,
+            "num_classes": None
+        }
+
+    num_classes = None
+    try:
+        num_classes = len(model.label_encoder.classes_)
+    except Exception:
+        num_classes = None
+
+    return {
+        "available": True,
+        "model_path": _current_model_path,
+        "model_type": model.model_type,
+        "version": model.version,
+        "num_classes": num_classes
+    }
+

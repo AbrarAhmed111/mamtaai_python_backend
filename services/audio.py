@@ -366,3 +366,4 @@ def extract_features(audio: np.ndarray, sample_rate: int, n_mfcc: int = 13) -> D
     features["duration"] = analyze_duration(audio, sample_rate)
     
     return features
+

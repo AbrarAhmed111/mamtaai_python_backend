@@ -16,7 +16,7 @@ from services.audio import (
     normalize_audio,
     extract_features
 )
-from services.classification import get_model
+from services.classification import get_model, get_model_metadata
 
 router = APIRouter(prefix="/streaming", tags=["streaming"])
 
@@ -232,6 +232,7 @@ async def stream_process_audio(
             
             try:
                 classifier = get_model()
+                model_metadata = get_model_metadata()
                 prediction_result = classifier.predict(features)
                 
                 yield await send_progress(
@@ -239,7 +240,8 @@ async def stream_process_audio(
                     "Classification completed!",
                     {
                         "progress": 100,
-                        "prediction": prediction_result
+                        "prediction": prediction_result,
+                        "model_info": model_metadata
                     }
                 )
                 await asyncio.sleep(0.1)
@@ -252,7 +254,8 @@ async def stream_process_audio(
                         "predicted_cry_type": prediction_result["predicted_cry_type"],
                         "confidence_score": prediction_result["confidence_score"],
                         "confidence_scores": prediction_result["confidence_scores"],
-                        "features": features
+                        "features": features,
+                        "model_info": model_metadata
                     }
                 )
                 
@@ -293,3 +296,4 @@ async def stream_process_audio(
             "X-Accel-Buffering": "no"
         }
     )
+
