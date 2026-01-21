@@ -288,6 +288,137 @@ async def get_model_info():
         raise HTTPException(status_code=500, detail=f"Error getting model info: {str(e)}")
 
 
+@router.post("/upload-dataset")
+async def upload_dataset(file: UploadFile = File(..., description="JSON file with training dataset")):
+    """
+    Upload a prepared dataset JSON file for training.
+    
+    The JSON file should contain a list of training samples:
+    [
+        {
+            "features": {...},
+            "label": "hungry"
+        },
+        ...
+    ]
+    
+    Returns the dataset statistics and allows you to train with it.
+    """
+    try:
+        # Read and parse JSON file
+        content = await file.read()
+        dataset = json.loads(content.decode('utf-8'))
+        
+        if not isinstance(dataset, list):
+            raise HTTPException(status_code=400, detail="Dataset must be a JSON array")
+        
+        # Validate dataset structure
+        valid_samples = []
+        for i, sample in enumerate(dataset):
+            if not isinstance(sample, dict):
+                continue
+            if "features" not in sample or "label" not in sample:
+                continue
+            valid_samples.append(sample)
+        
+        if len(valid_samples) == 0:
+            raise HTTPException(status_code=400, detail="No valid training samples found in dataset")
+        
+        # Count samples per label
+        label_counts = {}
+        for sample in valid_samples:
+            label = sample['label']
+            label_counts[label] = label_counts.get(label, 0) + 1
+        
+        return {
+            "message": "Dataset uploaded successfully",
+            "total_samples": len(valid_samples),
+            "samples_per_label": label_counts,
+            "labels": list(label_counts.keys()),
+            "next_step": "Use /api/classification/train endpoint with this dataset"
+        }
+    
+    except json.JSONDecodeError as e:
+        raise HTTPException(status_code=400, detail=f"Invalid JSON file: {str(e)}")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error uploading dataset: {str(e)}")
+
+
+@router.post("/upload-dataset-and-train")
+async def upload_dataset_and_train(
+    file: UploadFile = File(..., description="JSON file with training dataset"),
+    model_type: str = Form("random_forest", description="Model type: 'random_forest' or 'gradient_boosting'"),
+    test_size: float = Form(0.2, description="Proportion of data for testing"),
+    validation_size: float = Form(0.1, description="Proportion of data for validation"),
+    cry_types: Optional[str] = Form(None, description="Comma-separated list of cry types (optional)")
+):
+    """
+    Upload a dataset and immediately train a model with it.
+    
+    This is a convenience endpoint that combines dataset upload and training.
+    """
+    try:
+        # Read and parse JSON file
+        content = await file.read()
+        dataset = json.loads(content.decode('utf-8'))
+        
+        if not isinstance(dataset, list):
+            raise HTTPException(status_code=400, detail="Dataset must be a JSON array")
+        
+        # Prepare training data
+        training_data = []
+        for sample in dataset:
+            if not isinstance(sample, dict):
+                continue
+            if "features" not in sample or "label" not in sample:
+                continue
+            training_data.append({
+                "features": sample["features"],
+                "label": sample["label"]
+            })
+        
+        if len(training_data) == 0:
+            raise HTTPException(status_code=400, detail="No valid training samples found in dataset")
+        
+        # Parse cry types if provided
+        cry_types_list = None
+        if cry_types:
+            cry_types_list = [ct.strip() for ct in cry_types.split(",")]
+        
+        # Create classifier
+        classifier = BabyCryClassifier(
+            model_type=model_type,
+            cry_types=cry_types_list or DEFAULT_CRY_TYPES
+        )
+        
+        # Train model
+        result = classifier.train(
+            training_data=training_data,
+            test_size=test_size,
+            validation_size=validation_size
+        )
+        
+        # Save model
+        model_name = "baby_cry_classifier"
+        model_path = classifier.save(model_name)
+        
+        # Set as current model
+        set_model(classifier, model_path)
+        
+        return TrainingResponse(
+            message="Dataset uploaded and model trained successfully",
+            model_path=model_path,
+            metrics=result["metrics"],
+            classification_report=result["classification_report"],
+            confusion_matrix=result["confusion_matrix"]
+        )
+    
+    except json.JSONDecodeError as e:
+        raise HTTPException(status_code=400, detail=f"Invalid JSON file: {str(e)}")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error training model: {str(e)}")
+
+
 @router.get("/health")
 async def classification_health():
     """Health check for classification service."""
@@ -303,7 +434,9 @@ async def classification_health():
                 "predict": "/api/classification/predict - Predict from features",
                 "predict-from-audio": "/api/classification/predict-from-audio - Complete pipeline",
                 "improve": "/api/classification/improve - Improve existing model",
-                "load-model": "/api/classification/load-model - Load saved model"
+                "load-model": "/api/classification/load-model - Load saved model",
+                "upload-dataset": "/api/classification/upload-dataset - Upload prepared dataset",
+                "upload-dataset-and-train": "/api/classification/upload-dataset-and-train - Upload and train"
             }
         }
     except ValueError:
@@ -312,6 +445,9 @@ async def classification_health():
             "service": "baby-cry-classification",
             "message": "No model loaded. Train a model first.",
             "endpoints": {
-                "train": "/api/classification/train - Train new model"
+                "train": "/api/classification/train - Train new model",
+                "upload-dataset": "/api/classification/upload-dataset - Upload prepared dataset",
+                "upload-dataset-and-train": "/api/classification/upload-dataset-and-train - Upload and train"
             }
         }
+

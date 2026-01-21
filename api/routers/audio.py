@@ -211,3 +211,4 @@ async def audio_health():
             "features": "/api/audio/features - Feature extraction only"
         }
     }
+

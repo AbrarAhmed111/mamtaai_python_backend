@@ -224,6 +224,38 @@ Load a saved model from disk
 #### `GET /api/classification/model-info`
 Get information about the current loaded model
 
+#### `POST /api/classification/upload-dataset`
+Upload a prepared dataset JSON file for training
+
+**Request:**
+- `file`: JSON file with training dataset (multipart/form-data)
+
+**Response:**
+```json
+{
+  "message": "Dataset uploaded successfully",
+  "total_samples": 150,
+  "samples_per_label": {
+    "hungry": 50,
+    "tired": 50,
+    "pain": 50
+  },
+  "labels": ["hungry", "tired", "pain"]
+}
+```
+
+#### `POST /api/classification/upload-dataset-and-train`
+Upload a dataset and immediately train a model with it
+
+**Request:**
+- `file`: JSON file with training dataset (multipart/form-data)
+- `model_type`: String (default: "random_forest")
+- `test_size`: Float (default: 0.2)
+- `validation_size`: Float (default: 0.1)
+- `cry_types`: String (optional, comma-separated)
+
+**Response:** Same as `/train` endpoint
+
 #### `GET /api/classification/health`
 Health check for classification service
 
@@ -293,6 +325,99 @@ curl -X POST "http://localhost:8000/api/classification/predict-from-audio" \
   -F "normalize=true"
 ```
 
+## 📊 Dataset Preparation
+
+### 🎯 Recommended Dataset: **Baby Crying Sounds (Kaggle)**
+
+**Perfect dataset available on Kaggle!**
+- ✅ **1,313 total files** - Large, well-distributed dataset
+- ✅ **Direct matches**: hungry (382!), tired (132), discomfort (135)
+- ✅ **Easy mappings**: belly pain → pain, cold_hot/burping → discomfort
+- ✅ **Easy download** from Kaggle
+
+### 🚀 Automated Setup (Recommended)
+
+**One-command setup:**
+```bash
+# Linux/Mac
+chmod +x scripts/setup_kaggle_dataset.sh
+./scripts/setup_kaggle_dataset.sh
+
+# Windows
+.\scripts\setup_kaggle_dataset.ps1
+```
+
+This automatically:
+1. Downloads dataset from Kaggle
+2. Organizes and maps labels
+3. Validates dataset
+4. Prepares training-ready JSON
+
+### 📝 Manual Setup
+
+**Step 1: Download from Kaggle**
+```bash
+pip install kaggle
+# Get API token from https://www.kaggle.com/account
+kaggle datasets download -d baby-crying-sounds-dataset
+unzip baby-crying-sounds-dataset.zip
+```
+
+**Step 2: Organize Dataset**
+```bash
+# Automated (recommended)
+python -m utils.dataset_download_helper \
+    --map-baby-crying-sounds "Baby Crying Sounds" \
+    --output baby_cry_dataset
+
+# Or manual organization (see docs/KAGGLE_DATASET_SETUP.md)
+```
+
+**Step 3: Prepare & Train**
+```bash
+python -m utils.dataset_preparation \
+    --dataset-dir baby_cry_dataset \
+    --output dataset.json
+
+curl -X POST "http://localhost:8000/api/classification/upload-dataset-and-train" \
+  -F "file=@dataset.json"
+```
+
+### Using Your Own Dataset
+
+1. **Organize your audio files** by label:
+   ```
+   dataset/
+   ├── hungry/
+   │   ├── audio1.wav
+   │   └── audio2.wav
+   ├── tired/
+   │   ├── audio1.wav
+   │   └── audio2.wav
+   └── ...
+   ```
+
+2. **Prepare the dataset**:
+   ```bash
+   python -m utils.dataset_preparation \
+       --dataset-dir /path/to/your/dataset \
+       --output dataset.json
+   ```
+
+3. **Upload and train**:
+   ```bash
+   curl -X POST "http://localhost:8000/api/classification/upload-dataset-and-train" \
+     -F "file=@dataset.json"
+   ```
+
+### Documentation
+
+- **[Quick Start Guide](DATASET_QUICK_START.md)** - Get started in 5 steps
+- **[Kaggle Setup Guide](docs/KAGGLE_DATASET_SETUP.md)** - Complete Kaggle download & setup
+- **[Baby Crying Sounds Integration](docs/BABY_CRYING_SOUNDS_DATASET.md)** - Detailed mapping guide
+- **[Dataset Preparation Guide](docs/DATASET_PREPARATION.md)** - Technical preparation details
+- **[Dataset Recommendation](docs/DATASET_RECOMMENDATION.md)** - Comparison with other datasets
+
 ## 📁 Project Structure
 
 ```
@@ -309,12 +434,20 @@ mamtaai_python_backend/
 │   ├── audio.py                # Audio processing logic
 │   └── classification.py       # ML model logic
 │
+├── utils/
+│   ├── __init__.py
+│   └── dataset_preparation.py  # Dataset preparation utilities
+│
+├── examples/
+│   └── prepare_dataset_example.py  # Example scripts
+│
 ├── models/                     # Saved ML models (created at runtime)
 │   └── *.pkl                   # Trained classifier models
 │
 ├── docs/
 │   ├── API_FLOW.md            # Detailed API flow documentation
-│   └── PROJECT_STRUCTURE.md   # Project structure guide
+│   ├── PROJECT_STRUCTURE.md   # Project structure guide
+│   └── DATASET_PREPARATION.md # Dataset preparation guide
 │
 ├── config.py                   # Configuration helpers
 ├── requirements.txt            # Python dependencies
@@ -355,6 +488,7 @@ You can customize these when training a model.
 
 - **[API Flow Documentation](docs/API_FLOW.md)** - Detailed request flow and architecture
 - **[Project Structure](docs/PROJECT_STRUCTURE.md)** - File-by-file guide
+- **[Dataset Preparation Guide](docs/DATASET_PREPARATION.md)** - How to prepare and add datasets
 - **Interactive API Docs** - Available at `/docs` when server is running
 
 ## 🧪 Testing
