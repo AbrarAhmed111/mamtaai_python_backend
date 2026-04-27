@@ -68,6 +68,7 @@ processed_audio.wav
 
 # ML Models
 models/*.pkl
+!models/baby_cry_classifier_v1.0.0.pkl
 models/*.joblib
 models/*.h5
 models/*.pb
