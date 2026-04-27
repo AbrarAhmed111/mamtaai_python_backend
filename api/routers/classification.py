@@ -451,3 +451,1275 @@ async def classification_health():
             }
         }
 
+
+        if "mp3" in content_type.lower() or (file.filename and file.filename.endswith(".mp3")):
+
+            input_format = "mp3"
+
+        elif "m4a" in content_type.lower() or (file.filename and file.filename.endswith(".m4a")):
+
+            input_format = "m4a"
+
+        elif "ogg" in content_type.lower() or (file.filename and file.filename.endswith(".ogg")):
+
+            input_format = "ogg"
+
+        
+
+        # Convert audio format
+
+        audio, sample_rate = convert_audio_format(audio_bytes, input_format)
+
+        
+
+        # Extract features
+
+        features = extract_features(audio, sample_rate, n_mfcc=n_mfcc)
+
+        
+
+        # Get current model
+
+        classifier = get_model()
+
+        
+
+        # Predict
+
+        prediction_result = classifier.predict(features)
+
+        
+
+        return {
+
+            "message": "Prediction completed successfully",
+
+            "prediction": prediction_result,
+
+            "features_extracted": {
+
+                "mfcc_coefficients": len(features.get("mfcc", {}).get("mfcc_mean", [])),
+
+                "has_spectrogram": "spectrogram" in features,
+
+                "has_pitch_analysis": "pitch_frequency" in features,
+
+                "has_duration_analysis": "duration" in features
+
+            }
+
+        }
+
+    
+
+    except ValueError as e:
+
+        raise HTTPException(status_code=400, detail=str(e))
+
+    except Exception as e:
+
+        raise HTTPException(status_code=500, detail=f"Error processing audio: {str(e)}")
+
+
+
+
+
+@router.post("/improve")
+
+async def improve_model(request: ImprovementRequest):
+
+    """
+
+    Continuously improve the model with new training data.
+
+    
+
+    This implements incremental learning by retraining the model
+
+    with additional data to improve accuracy over time.
+
+    """
+
+    try:
+
+        # Get current model
+
+        classifier = get_model()
+
+        
+
+        # Prepare new training data
+
+        new_training_data = [
+
+            {
+
+                "features": sample.features,
+
+                "label": sample.label
+
+            }
+
+            for sample in request.new_training_data
+
+        ]
+
+        
+
+        # Improve model
+
+        result = classifier.improve_with_new_data(
+
+            new_training_data=new_training_data,
+
+            test_size=request.test_size
+
+        )
+
+        
+
+        # Save improved model
+
+        model_name = "baby_cry_classifier"
+
+        model_path = classifier.save(model_name)
+
+        
+
+        # Set as current model
+
+        set_model(classifier, model_path)
+
+        
+
+        return {
+
+            "message": "Model improved successfully",
+
+            "model_path": model_path,
+
+            "metrics": result["metrics"],
+
+            "improvement": result.get("improvement", {}),
+
+            "classification_report": result.get("classification_report", {})
+
+        }
+
+    
+
+    except ValueError as e:
+
+        raise HTTPException(status_code=400, detail=str(e))
+
+    except Exception as e:
+
+        raise HTTPException(status_code=500, detail=f"Error improving model: {str(e)}")
+
+
+
+
+
+@router.post("/load-model")
+
+async def load_model(model_path: str = Body(..., embed=True)):
+
+    """
+
+    Load a trained model from disk.
+
+    
+
+    Args:
+
+        model_path: Path to the model file (.pkl)
+
+    """
+
+    try:
+
+        classifier = BabyCryClassifier.load(model_path)
+
+        set_model(classifier, model_path)
+
+        
+
+        return {
+
+            "message": "Model loaded successfully",
+
+            "model_path": model_path,
+
+            "model_type": classifier.model_type,
+
+            "cry_types": classifier.cry_types,
+
+            "metrics": classifier.training_metrics,
+
+            "version": classifier.version
+
+        }
+
+    
+
+    except Exception as e:
+
+        raise HTTPException(status_code=500, detail=f"Error loading model: {str(e)}")
+
+
+
+
+
+@router.get("/model-info")
+
+async def get_model_info():
+
+    """Get information about the current model."""
+
+    try:
+
+        classifier = get_model()
+
+        
+
+        return {
+
+            "model_type": classifier.model_type,
+
+            "cry_types": classifier.cry_types,
+
+            "version": classifier.version,
+
+            "metrics": classifier.training_metrics,
+
+            "num_features": len(classifier.feature_names) if classifier.feature_names else 0,
+
+            "model_loaded": classifier.model is not None
+
+        }
+
+    
+
+    except ValueError as e:
+
+        raise HTTPException(status_code=404, detail=str(e))
+
+    except Exception as e:
+
+        raise HTTPException(status_code=500, detail=f"Error getting model info: {str(e)}")
+
+
+
+
+
+@router.get("/health")
+
+async def classification_health():
+
+    """Health check for classification service."""
+
+    try:
+
+        classifier = get_model()
+
+        return {
+
+            "status": "healthy",
+
+            "service": "baby-cry-classification",
+
+            "model_available": classifier.model is not None,
+
+            "model_type": classifier.model_type,
+
+            "endpoints": {
+
+                "train": "/api/classification/train - Train new model",
+
+                "predict": "/api/classification/predict - Predict from features",
+
+                "predict-from-audio": "/api/classification/predict-from-audio - Complete pipeline",
+
+                "improve": "/api/classification/improve - Improve existing model",
+
+                "load-model": "/api/classification/load-model - Load saved model"
+
+            }
+
+        }
+
+    except ValueError:
+
+        return {
+
+            "status": "no_model",
+
+            "service": "baby-cry-classification",
+
+            "message": "No model loaded. Train a model first.",
+
+            "endpoints": {
+
+                "train": "/api/classification/train - Train new model"
+
+            }
+
+        }
+
+
+
+
+
+        if "mp3" in content_type.lower() or (file.filename and file.filename.endswith(".mp3")):
+
+            input_format = "mp3"
+
+        elif "m4a" in content_type.lower() or (file.filename and file.filename.endswith(".m4a")):
+
+            input_format = "m4a"
+
+        elif "ogg" in content_type.lower() or (file.filename and file.filename.endswith(".ogg")):
+
+            input_format = "ogg"
+
+        
+
+        # Convert audio format
+
+        audio, sample_rate = convert_audio_format(audio_bytes, input_format)
+
+        
+
+        # Extract features
+
+        features = extract_features(audio, sample_rate, n_mfcc=n_mfcc)
+
+        
+
+        # Get current model
+
+        classifier = get_model()
+
+        
+
+        # Predict
+
+        prediction_result = classifier.predict(features)
+
+        
+
+        return {
+
+            "message": "Prediction completed successfully",
+
+            "prediction": prediction_result,
+
+            "features_extracted": {
+
+                "mfcc_coefficients": len(features.get("mfcc", {}).get("mfcc_mean", [])),
+
+                "has_spectrogram": "spectrogram" in features,
+
+                "has_pitch_analysis": "pitch_frequency" in features,
+
+                "has_duration_analysis": "duration" in features
+
+            }
+
+        }
+
+    
+
+    except ValueError as e:
+
+        raise HTTPException(status_code=400, detail=str(e))
+
+    except Exception as e:
+
+        raise HTTPException(status_code=500, detail=f"Error processing audio: {str(e)}")
+
+
+
+
+
+@router.post("/improve")
+
+async def improve_model(request: ImprovementRequest):
+
+    """
+
+    Continuously improve the model with new training data.
+
+    
+
+    This implements incremental learning by retraining the model
+
+    with additional data to improve accuracy over time.
+
+    """
+
+    try:
+
+        # Get current model
+
+        classifier = get_model()
+
+        
+
+        # Prepare new training data
+
+        new_training_data = [
+
+            {
+
+                "features": sample.features,
+
+                "label": sample.label
+
+            }
+
+            for sample in request.new_training_data
+
+        ]
+
+        
+
+        # Improve model
+
+        result = classifier.improve_with_new_data(
+
+            new_training_data=new_training_data,
+
+            test_size=request.test_size
+
+        )
+
+        
+
+        # Save improved model
+
+        model_name = "baby_cry_classifier"
+
+        model_path = classifier.save(model_name)
+
+        
+
+        # Set as current model
+
+        set_model(classifier, model_path)
+
+        
+
+        return {
+
+            "message": "Model improved successfully",
+
+            "model_path": model_path,
+
+            "metrics": result["metrics"],
+
+            "improvement": result.get("improvement", {}),
+
+            "classification_report": result.get("classification_report", {})
+
+        }
+
+    
+
+    except ValueError as e:
+
+        raise HTTPException(status_code=400, detail=str(e))
+
+    except Exception as e:
+
+        raise HTTPException(status_code=500, detail=f"Error improving model: {str(e)}")
+
+
+
+
+
+@router.post("/load-model")
+
+async def load_model(model_path: str = Body(..., embed=True)):
+
+    """
+
+    Load a trained model from disk.
+
+    
+
+    Args:
+
+        model_path: Path to the model file (.pkl)
+
+    """
+
+    try:
+
+        classifier = BabyCryClassifier.load(model_path)
+
+        set_model(classifier, model_path)
+
+        
+
+        return {
+
+            "message": "Model loaded successfully",
+
+            "model_path": model_path,
+
+            "model_type": classifier.model_type,
+
+            "cry_types": classifier.cry_types,
+
+            "metrics": classifier.training_metrics,
+
+            "version": classifier.version
+
+        }
+
+    
+
+    except Exception as e:
+
+        raise HTTPException(status_code=500, detail=f"Error loading model: {str(e)}")
+
+
+
+
+
+@router.get("/model-info")
+
+async def get_model_info():
+
+    """Get information about the current model."""
+
+    try:
+
+        classifier = get_model()
+
+        
+
+        return {
+
+            "model_type": classifier.model_type,
+
+            "cry_types": classifier.cry_types,
+
+            "version": classifier.version,
+
+            "metrics": classifier.training_metrics,
+
+            "num_features": len(classifier.feature_names) if classifier.feature_names else 0,
+
+            "model_loaded": classifier.model is not None
+
+        }
+
+    
+
+    except ValueError as e:
+
+        raise HTTPException(status_code=404, detail=str(e))
+
+    except Exception as e:
+
+        raise HTTPException(status_code=500, detail=f"Error getting model info: {str(e)}")
+
+
+
+
+
+@router.get("/health")
+
+async def classification_health():
+
+    """Health check for classification service."""
+
+    try:
+
+        classifier = get_model()
+
+        return {
+
+            "status": "healthy",
+
+            "service": "baby-cry-classification",
+
+            "model_available": classifier.model is not None,
+
+            "model_type": classifier.model_type,
+
+            "endpoints": {
+
+                "train": "/api/classification/train - Train new model",
+
+                "predict": "/api/classification/predict - Predict from features",
+
+                "predict-from-audio": "/api/classification/predict-from-audio - Complete pipeline",
+
+                "improve": "/api/classification/improve - Improve existing model",
+
+                "load-model": "/api/classification/load-model - Load saved model"
+
+            }
+
+        }
+
+    except ValueError:
+
+        return {
+
+            "status": "no_model",
+
+            "service": "baby-cry-classification",
+
+            "message": "No model loaded. Train a model first.",
+
+            "endpoints": {
+
+                "train": "/api/classification/train - Train new model"
+
+            }
+
+        }
+
+
+
+
+
+        if "mp3" in content_type.lower() or (file.filename and file.filename.endswith(".mp3")):
+
+            input_format = "mp3"
+
+        elif "m4a" in content_type.lower() or (file.filename and file.filename.endswith(".m4a")):
+
+            input_format = "m4a"
+
+        elif "ogg" in content_type.lower() or (file.filename and file.filename.endswith(".ogg")):
+
+            input_format = "ogg"
+
+        
+
+        # Convert audio format
+
+        audio, sample_rate = convert_audio_format(audio_bytes, input_format)
+
+        
+
+        # Extract features
+
+        features = extract_features(audio, sample_rate, n_mfcc=n_mfcc)
+
+        
+
+        # Get current model
+
+        classifier = get_model()
+
+        
+
+        # Predict
+
+        prediction_result = classifier.predict(features)
+
+        
+
+        return {
+
+            "message": "Prediction completed successfully",
+
+            "prediction": prediction_result,
+
+            "features_extracted": {
+
+                "mfcc_coefficients": len(features.get("mfcc", {}).get("mfcc_mean", [])),
+
+                "has_spectrogram": "spectrogram" in features,
+
+                "has_pitch_analysis": "pitch_frequency" in features,
+
+                "has_duration_analysis": "duration" in features
+
+            }
+
+        }
+
+    
+
+    except ValueError as e:
+
+        raise HTTPException(status_code=400, detail=str(e))
+
+    except Exception as e:
+
+        raise HTTPException(status_code=500, detail=f"Error processing audio: {str(e)}")
+
+
+
+
+
+@router.post("/improve")
+
+async def improve_model(request: ImprovementRequest):
+
+    """
+
+    Continuously improve the model with new training data.
+
+    
+
+    This implements incremental learning by retraining the model
+
+    with additional data to improve accuracy over time.
+
+    """
+
+    try:
+
+        # Get current model
+
+        classifier = get_model()
+
+        
+
+        # Prepare new training data
+
+        new_training_data = [
+
+            {
+
+                "features": sample.features,
+
+                "label": sample.label
+
+            }
+
+            for sample in request.new_training_data
+
+        ]
+
+        
+
+        # Improve model
+
+        result = classifier.improve_with_new_data(
+
+            new_training_data=new_training_data,
+
+            test_size=request.test_size
+
+        )
+
+        
+
+        # Save improved model
+
+        model_name = "baby_cry_classifier"
+
+        model_path = classifier.save(model_name)
+
+        
+
+        # Set as current model
+
+        set_model(classifier, model_path)
+
+        
+
+        return {
+
+            "message": "Model improved successfully",
+
+            "model_path": model_path,
+
+            "metrics": result["metrics"],
+
+            "improvement": result.get("improvement", {}),
+
+            "classification_report": result.get("classification_report", {})
+
+        }
+
+    
+
+    except ValueError as e:
+
+        raise HTTPException(status_code=400, detail=str(e))
+
+    except Exception as e:
+
+        raise HTTPException(status_code=500, detail=f"Error improving model: {str(e)}")
+
+
+
+
+
+@router.post("/load-model")
+
+async def load_model(model_path: str = Body(..., embed=True)):
+
+    """
+
+    Load a trained model from disk.
+
+    
+
+    Args:
+
+        model_path: Path to the model file (.pkl)
+
+    """
+
+    try:
+
+        classifier = BabyCryClassifier.load(model_path)
+
+        set_model(classifier, model_path)
+
+        
+
+        return {
+
+            "message": "Model loaded successfully",
+
+            "model_path": model_path,
+
+            "model_type": classifier.model_type,
+
+            "cry_types": classifier.cry_types,
+
+            "metrics": classifier.training_metrics,
+
+            "version": classifier.version
+
+        }
+
+    
+
+    except Exception as e:
+
+        raise HTTPException(status_code=500, detail=f"Error loading model: {str(e)}")
+
+
+
+
+
+@router.get("/model-info")
+
+async def get_model_info():
+
+    """Get information about the current model."""
+
+    try:
+
+        classifier = get_model()
+
+        
+
+        return {
+
+            "model_type": classifier.model_type,
+
+            "cry_types": classifier.cry_types,
+
+            "version": classifier.version,
+
+            "metrics": classifier.training_metrics,
+
+            "num_features": len(classifier.feature_names) if classifier.feature_names else 0,
+
+            "model_loaded": classifier.model is not None
+
+        }
+
+    
+
+    except ValueError as e:
+
+        raise HTTPException(status_code=404, detail=str(e))
+
+    except Exception as e:
+
+        raise HTTPException(status_code=500, detail=f"Error getting model info: {str(e)}")
+
+
+
+
+
+@router.get("/health")
+
+async def classification_health():
+
+    """Health check for classification service."""
+
+    try:
+
+        classifier = get_model()
+
+        return {
+
+            "status": "healthy",
+
+            "service": "baby-cry-classification",
+
+            "model_available": classifier.model is not None,
+
+            "model_type": classifier.model_type,
+
+            "endpoints": {
+
+                "train": "/api/classification/train - Train new model",
+
+                "predict": "/api/classification/predict - Predict from features",
+
+                "predict-from-audio": "/api/classification/predict-from-audio - Complete pipeline",
+
+                "improve": "/api/classification/improve - Improve existing model",
+
+                "load-model": "/api/classification/load-model - Load saved model"
+
+            }
+
+        }
+
+    except ValueError:
+
+        return {
+
+            "status": "no_model",
+
+            "service": "baby-cry-classification",
+
+            "message": "No model loaded. Train a model first.",
+
+            "endpoints": {
+
+                "train": "/api/classification/train - Train new model"
+
+            }
+
+        }
+
+
+
+
+
+        if "mp3" in content_type.lower() or (file.filename and file.filename.endswith(".mp3")):
+
+            input_format = "mp3"
+
+        elif "m4a" in content_type.lower() or (file.filename and file.filename.endswith(".m4a")):
+
+            input_format = "m4a"
+
+        elif "ogg" in content_type.lower() or (file.filename and file.filename.endswith(".ogg")):
+
+            input_format = "ogg"
+
+        
+
+        # Convert audio format
+
+        audio, sample_rate = convert_audio_format(audio_bytes, input_format)
+
+        
+
+        # Extract features
+
+        features = extract_features(audio, sample_rate, n_mfcc=n_mfcc)
+
+        
+
+        # Get current model
+
+        classifier = get_model()
+
+        
+
+        # Predict
+
+        prediction_result = classifier.predict(features)
+
+        
+
+        return {
+
+            "message": "Prediction completed successfully",
+
+            "prediction": prediction_result,
+
+            "features_extracted": {
+
+                "mfcc_coefficients": len(features.get("mfcc", {}).get("mfcc_mean", [])),
+
+                "has_spectrogram": "spectrogram" in features,
+
+                "has_pitch_analysis": "pitch_frequency" in features,
+
+                "has_duration_analysis": "duration" in features
+
+            }
+
+        }
+
+    
+
+    except ValueError as e:
+
+        raise HTTPException(status_code=400, detail=str(e))
+
+    except Exception as e:
+
+        raise HTTPException(status_code=500, detail=f"Error processing audio: {str(e)}")
+
+
+
+
+
+@router.post("/improve")
+
+async def improve_model(request: ImprovementRequest):
+
+    """
+
+    Continuously improve the model with new training data.
+
+    
+
+    This implements incremental learning by retraining the model
+
+    with additional data to improve accuracy over time.
+
+    """
+
+    try:
+
+        # Get current model
+
+        classifier = get_model()
+
+        
+
+        # Prepare new training data
+
+        new_training_data = [
+
+            {
+
+                "features": sample.features,
+
+                "label": sample.label
+
+            }
+
+            for sample in request.new_training_data
+
+        ]
+
+        
+
+        # Improve model
+
+        result = classifier.improve_with_new_data(
+
+            new_training_data=new_training_data,
+
+            test_size=request.test_size
+
+        )
+
+        
+
+        # Save improved model
+
+        model_name = "baby_cry_classifier"
+
+        model_path = classifier.save(model_name)
+
+        
+
+        # Set as current model
+
+        set_model(classifier, model_path)
+
+        
+
+        return {
+
+            "message": "Model improved successfully",
+
+            "model_path": model_path,
+
+            "metrics": result["metrics"],
+
+            "improvement": result.get("improvement", {}),
+
+            "classification_report": result.get("classification_report", {})
+
+        }
+
+    
+
+    except ValueError as e:
+
+        raise HTTPException(status_code=400, detail=str(e))
+
+    except Exception as e:
+
+        raise HTTPException(status_code=500, detail=f"Error improving model: {str(e)}")
+
+
+
+
+
+@router.post("/load-model")
+
+async def load_model(model_path: str = Body(..., embed=True)):
+
+    """
+
+    Load a trained model from disk.
+
+    
+
+    Args:
+
+        model_path: Path to the model file (.pkl)
+
+    """
+
+    try:
+
+        classifier = BabyCryClassifier.load(model_path)
+
+        set_model(classifier, model_path)
+
+        
+
+        return {
+
+            "message": "Model loaded successfully",
+
+            "model_path": model_path,
+
+            "model_type": classifier.model_type,
+
+            "cry_types": classifier.cry_types,
+
+            "metrics": classifier.training_metrics,
+
+            "version": classifier.version
+
+        }
+
+    
+
+    except Exception as e:
+
+        raise HTTPException(status_code=500, detail=f"Error loading model: {str(e)}")
+
+
+
+
+
+@router.get("/model-info")
+
+async def get_model_info():
+
+    """Get information about the current model."""
+
+    try:
+
+        classifier = get_model()
+
+        
+
+        return {
+
+            "model_type": classifier.model_type,
+
+            "cry_types": classifier.cry_types,
+
+            "version": classifier.version,
+
+            "metrics": classifier.training_metrics,
+
+            "num_features": len(classifier.feature_names) if classifier.feature_names else 0,
+
+            "model_loaded": classifier.model is not None
+
+        }
+
+    
+
+    except ValueError as e:
+
+        raise HTTPException(status_code=404, detail=str(e))
+
+    except Exception as e:
+
+        raise HTTPException(status_code=500, detail=f"Error getting model info: {str(e)}")
+
+
+
+
+
+@router.get("/health")
+
+async def classification_health():
+
+    """Health check for classification service."""
+
+    try:
+
+        classifier = get_model()
+
+        return {
+
+            "status": "healthy",
+
+            "service": "baby-cry-classification",
+
+            "model_available": classifier.model is not None,
+
+            "model_type": classifier.model_type,
+
+            "endpoints": {
+
+                "train": "/api/classification/train - Train new model",
+
+                "predict": "/api/classification/predict - Predict from features",
+
+                "predict-from-audio": "/api/classification/predict-from-audio - Complete pipeline",
+
+                "improve": "/api/classification/improve - Improve existing model",
+
+                "load-model": "/api/classification/load-model - Load saved model"
+
+            }
+
+        }
+
+    except ValueError:
+
+        return {
+
+            "status": "no_model",
+
+            "service": "baby-cry-classification",
+
+            "message": "No model loaded. Train a model first.",
+
+            "endpoints": {
+
+                "train": "/api/classification/train - Train new model"
+
+            }
+
+        }
+
+
+
+
