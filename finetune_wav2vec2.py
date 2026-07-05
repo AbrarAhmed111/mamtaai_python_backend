@@ -126,7 +126,7 @@ def evaluate(model, loader, criterion):
         for batch in loader:
             input_values = batch["input_values"].to(DEVICE)
             labels       = batch["labels"].to(DEVICE)
-            with torch.cuda.amp.autocast(enabled=USE_FP16):
+            with torch.amp.autocast("cuda", enabled=USE_FP16):
                 out = model(input_values=input_values)
             loss = criterion(out.logits, labels)
             total_loss += loss.item() * len(labels)
@@ -144,7 +144,7 @@ def train():
     print(f"FP16   : {USE_FP16}\n")
 
     # 1. Load file list
-    print(f"Scanning {DATASET_DIR} …")
+    print(f"Scanning {DATASET_DIR} ...")
     files, labels, label2id, id2label = load_file_list(DATASET_DIR)
     n = len(files)
     print(f"  {n} files across {len(label2id)} classes: {list(label2id.keys())}\n")
@@ -157,13 +157,13 @@ def train():
     print(f"Split  : {len(train_files)} train / {len(val_files)} val / {len(test_files)} test\n")
 
     # 2. Feature extractor
-    print(f"Loading feature extractor from {BASE_MODEL} …")
+    print(f"Loading feature extractor from {BASE_MODEL} ...")
     extractor = AutoFeatureExtractor.from_pretrained(BASE_MODEL)
 
     # 3. Datasets & loaders
     # Single shared cache so all splits populate the same RAM store
     ram_cache = {} if CACHE_IN_RAM else None
-    print(f"RAM cache : {'enabled (22k files ~4–6 GB RAM)' if CACHE_IN_RAM else 'disabled'}")
+    print(f"RAM cache : {'enabled (22k files ~4-6 GB RAM)' if CACHE_IN_RAM else 'disabled'}")
 
     train_ds = CryDataset(train_files, train_labels, extractor, cache=ram_cache)
     val_ds   = CryDataset(val_files,   val_labels,   extractor, cache=ram_cache)
@@ -180,7 +180,7 @@ def train():
                               pin_memory=True, persistent_workers=True)
 
     # 4. Model
-    print(f"Loading model {BASE_MODEL} …")
+    print(f"Loading model {BASE_MODEL} ...")
     model = Wav2Vec2ForSequenceClassification.from_pretrained(
         BASE_MODEL,
         num_labels=len(label2id),
@@ -204,7 +204,7 @@ def train():
     total_steps   = (len(train_loader) // GRAD_ACCUM) * EPOCHS
     warmup_steps  = int(total_steps * WARMUP_RATIO)
     scheduler     = get_linear_schedule_with_warmup(optimizer, warmup_steps, total_steps)
-    scaler        = torch.cuda.amp.GradScaler(enabled=USE_FP16)
+    scaler        = torch.amp.GradScaler("cuda", enabled=USE_FP16)
     criterion     = nn.CrossEntropyLoss()
 
     # 6. Training
@@ -221,7 +221,7 @@ def train():
             input_values = batch["input_values"].to(DEVICE)
             labels_t     = batch["labels"].to(DEVICE)
 
-            with torch.cuda.amp.autocast(enabled=USE_FP16):
+            with torch.amp.autocast("cuda", enabled=USE_FP16):
                 out  = model(input_values=input_values)
                 loss = criterion(out.logits, labels_t) / GRAD_ACCUM
 
@@ -255,7 +255,7 @@ def train():
             patience_cnt = 0
             model.save_pretrained(OUTPUT_DIR)
             extractor.save_pretrained(OUTPUT_DIR)
-            print(f"  ✓ New best val_acc={best_val_acc:.4f} — checkpoint saved")
+            print(f"  [BEST] val_acc={best_val_acc:.4f} -- checkpoint saved")
         else:
             patience_cnt += 1
             print(f"  No improvement ({patience_cnt}/{PATIENCE})")
@@ -264,7 +264,7 @@ def train():
                 break
 
     # 7. Test evaluation with best checkpoint
-    print(f"\nLoading best checkpoint for test evaluation …")
+    print(f"\nLoading best checkpoint for test evaluation ...")
     best_model = Wav2Vec2ForSequenceClassification.from_pretrained(OUTPUT_DIR)
     best_model.to(DEVICE)
     test_loss, test_acc = evaluate(best_model, test_loader, criterion)
