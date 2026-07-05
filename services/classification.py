@@ -11,6 +11,7 @@ from typing import Dict, List, Tuple, Optional
 from datetime import datetime
 from pathlib import Path
 from sklearn.ensemble import RandomForestClassifier, GradientBoostingClassifier
+from xgboost import XGBClassifier
 from sklearn.model_selection import train_test_split, cross_val_score
 from sklearn.preprocessing import StandardScaler, LabelEncoder
 from sklearn.metrics import (
@@ -31,7 +32,6 @@ DEFAULT_CRY_TYPES = [
     "tired",
     "discomfort",
     "pain",
-    "attention",
     "diaper_change",
     "overstimulated",
     "colic"
@@ -62,19 +62,39 @@ class BabyCryClassifier:
         """Create the ML model based on model_type."""
         if self.model_type == "random_forest":
             self.model = RandomForestClassifier(
-                n_estimators=100,
-                max_depth=20,
-                min_samples_split=5,
-                min_samples_leaf=2,
+                n_estimators=300,
+                max_depth=None,       # grow full trees — pruned via min_samples_leaf
+                min_samples_split=4,
+                min_samples_leaf=1,
+                max_features="sqrt",
+                class_weight="balanced",
                 random_state=42,
-                n_jobs=-1
+                n_jobs=-1,
             )
         elif self.model_type == "gradient_boosting":
             self.model = GradientBoostingClassifier(
-                n_estimators=100,
-                max_depth=5,
-                learning_rate=0.1,
-                random_state=42
+                n_estimators=300,
+                max_depth=6,
+                learning_rate=0.05,
+                subsample=0.8,
+                min_samples_leaf=2,
+                random_state=42,
+            )
+        elif self.model_type == "xgboost":
+            self.model = XGBClassifier(
+                n_estimators=500,
+                max_depth=7,
+                learning_rate=0.05,
+                subsample=0.8,
+                colsample_bytree=0.8,
+                min_child_weight=2,
+                gamma=0.1,
+                reg_alpha=0.1,
+                reg_lambda=1.0,
+                use_label_encoder=False,
+                eval_metric="mlogloss",
+                random_state=42,
+                n_jobs=-1,
             )
         else:
             raise ValueError(f"Unknown model_type: {self.model_type}")
@@ -82,48 +102,68 @@ class BabyCryClassifier:
     def _extract_feature_vector(self, features: Dict) -> np.ndarray:
         """
         Extract feature vector from audio features dictionary.
-        
+
         Args:
             features: Dictionary containing extracted audio features
-        
+
         Returns:
             Feature vector as numpy array
         """
         feature_list = []
-        
-        # MFCC features (mean values)
-        if "mfcc" in features and "mfcc_mean" in features["mfcc"]:
-            feature_list.extend(features["mfcc"]["mfcc_mean"])
-        
-        # Pitch and frequency features
-        if "pitch_frequency" in features:
-            pf = features["pitch_frequency"]
+
+        # MFCC: mean, std, delta mean/std, delta-delta mean/std (6 * n_mfcc values)
+        mfcc = features.get("mfcc", {})
+        if mfcc:
+            feature_list.extend(mfcc.get("mfcc_mean", []))
+            feature_list.extend(mfcc.get("mfcc_std", []))
+            feature_list.extend(mfcc.get("mfcc_delta_mean", []))
+            feature_list.extend(mfcc.get("mfcc_delta_std", []))
+            feature_list.extend(mfcc.get("mfcc_delta2_mean", []))
+            feature_list.extend(mfcc.get("mfcc_delta2_std", []))
+
+        # Pitch and spectral features
+        pf = features.get("pitch_frequency", {})
+        if pf:
             feature_list.extend([
                 pf.get("pitch_mean", 0),
                 pf.get("pitch_std", 0),
+                pf.get("pitch_min", 0),
+                pf.get("pitch_max", 0),
                 pf.get("dominant_frequency", 0),
                 pf.get("spectral_centroid_mean", 0),
-                pf.get("zero_crossing_rate_mean", 0)
+                pf.get("spectral_centroid_std", 0),
+                pf.get("spectral_bandwidth_mean", 0),
+                pf.get("spectral_bandwidth_std", 0),
+                pf.get("spectral_rolloff_mean", 0),
+                pf.get("spectral_rolloff_std", 0),
+                pf.get("rms_mean", 0),
+                pf.get("rms_std", 0),
+                pf.get("zero_crossing_rate_mean", 0),
+                pf.get("zero_crossing_rate_std", 0),
             ])
-        
+            feature_list.extend(pf.get("spectral_contrast_mean", []))  # 7 values
+            feature_list.extend(pf.get("spectral_contrast_std", []))   # 7 values
+            feature_list.extend(pf.get("chroma_mean", []))             # 12 values
+            feature_list.extend(pf.get("chroma_std", []))              # 12 values
+
         # Duration features
-        if "duration" in features:
-            d = features["duration"]
+        d = features.get("duration", {})
+        if d:
             feature_list.extend([
                 d.get("total_duration_seconds", 0),
                 d.get("actual_audio_duration_seconds", 0),
-                d.get("silence_percentage", 0)
+                d.get("silence_percentage", 0),
             ])
-        
+
         # Spectrogram statistics
-        if "spectrogram" in features:
-            sp = features["spectrogram"]
+        sp = features.get("spectrogram", {})
+        if sp:
             feature_list.extend([
                 sp.get("magnitude_mean", 0),
                 sp.get("magnitude_max", 0),
-                sp.get("magnitude_min", 0)
+                sp.get("magnitude_min", 0),
             ])
-        
+
         return np.array(feature_list)
     
     def train(
@@ -165,20 +205,20 @@ class BabyCryClassifier:
         
         if len(X) == 0:
             raise ValueError("No valid training samples found")
-        
+
         X = np.array(X)
         y = np.array(y)
-        
+
         # Encode labels based on data (avoid mismatches when dataset has fewer classes)
         labels_in_data = sorted(set(y))
         if self.cry_types:
             labels_in_data = [label for label in self.cry_types if label in labels_in_data]
         self.label_encoder.fit(labels_in_data)
         y_encoded = self.label_encoder.transform(y)
-        
+
         # Store feature names for reference
         self.feature_names = [f"feature_{i}" for i in range(X.shape[1])]
-        
+
         # Split data
         X_temp, X_test, y_temp, y_test = train_test_split(
             X, y_encoded, test_size=test_size, random_state=42, stratify=y_encoded
@@ -197,7 +237,7 @@ class BabyCryClassifier:
         # Create and train model
         if not retrain or self.model is None:
             self._create_model()
-        
+
         # Train model
         self.model.fit(X_train_scaled, y_train)
         
