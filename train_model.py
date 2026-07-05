@@ -55,7 +55,7 @@ def main():
 
     results = {}
 
-    for model_type in ("random_forest", "gradient_boosting", "xgboost"):
+    for model_type in ("random_forest", "gradient_boosting", "xgboost", "voting"):
         print(f"\n{'='*60}")
         print(f"Training {model_type.replace('_', ' ').title()}...")
         print("=" * 60)
