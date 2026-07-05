@@ -115,9 +115,10 @@ async def stream_process_audio(
             duration = len(audio) / sample_rate
             await asyncio.sleep(0.1)
             
-            # Step 3: Noise Removal
+            # Step 3: Noise Removal — live_recording=True applies bandpass filter +
+            # noise profile from first 0.5s, tuned for microphone recordings
             if remove_noise:
-                audio = remove_noise_func(audio, sample_rate)
+                audio = remove_noise_func(audio, sample_rate, live_recording=True)
             await asyncio.sleep(0.1)
             
             # Step 4: Normalization
