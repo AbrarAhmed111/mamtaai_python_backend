@@ -1,0 +1,17 @@
+.venv
+__pycache__
+*.pyc
+*.pyo
+.git
+.gitignore
+datasets/
+*.log
+.env
+.env.local
+requirements-train.txt
+augment_dataset.py
+finetune_wav2vec2.py
+prepare_all_datasets.py
+reextract_features.py
+retrain_from_feedback.py
+train_model.py
