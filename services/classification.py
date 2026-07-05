@@ -10,7 +10,7 @@ import pandas as pd
 from typing import Dict, List, Tuple, Optional
 from datetime import datetime
 from pathlib import Path
-from sklearn.ensemble import RandomForestClassifier, GradientBoostingClassifier
+from sklearn.ensemble import RandomForestClassifier, GradientBoostingClassifier, VotingClassifier
 from xgboost import XGBClassifier
 from sklearn.model_selection import train_test_split, cross_val_score
 from sklearn.preprocessing import StandardScaler, LabelEncoder
@@ -94,6 +94,46 @@ class BabyCryClassifier:
                 use_label_encoder=False,
                 eval_metric="mlogloss",
                 random_state=42,
+                n_jobs=-1,
+            )
+        elif self.model_type == "voting":
+            rf = RandomForestClassifier(
+                n_estimators=300,
+                max_depth=None,
+                min_samples_split=4,
+                min_samples_leaf=1,
+                max_features="sqrt",
+                class_weight="balanced",
+                random_state=42,
+                n_jobs=1,
+            )
+            gb = GradientBoostingClassifier(
+                n_estimators=300,
+                max_depth=6,
+                learning_rate=0.05,
+                subsample=0.8,
+                min_samples_leaf=2,
+                random_state=42,
+            )
+            xgb = XGBClassifier(
+                n_estimators=500,
+                max_depth=7,
+                learning_rate=0.05,
+                subsample=0.8,
+                colsample_bytree=0.8,
+                min_child_weight=2,
+                gamma=0.1,
+                reg_alpha=0.1,
+                reg_lambda=1.0,
+                use_label_encoder=False,
+                eval_metric="mlogloss",
+                random_state=42,
+                n_jobs=1,
+            )
+            # soft voting averages predicted probabilities — more accurate than hard majority vote
+            self.model = VotingClassifier(
+                estimators=[("rf", rf), ("gb", gb), ("xgb", xgb)],
+                voting="soft",
                 n_jobs=-1,
             )
         else:
