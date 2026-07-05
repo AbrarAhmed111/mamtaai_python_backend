@@ -22,7 +22,16 @@ _load_lock = threading.Lock()
 
 
 def is_available() -> bool:
-    return (_MODEL_DIR / "config.json").exists() and (_MODEL_DIR / "label_map.json").exists()
+    # All three artifacts must exist — config/label_map ship via git but the
+    # 360MB weights file is deployed separately, so its absence means sklearn fallback.
+    required = ("config.json", "label_map.json", "model.safetensors")
+    if not all((_MODEL_DIR / f).exists() for f in required):
+        return False
+    try:
+        import torch  # noqa: F401 — torch not installed on slim deploys
+        return True
+    except ImportError:
+        return False
 
 
 def _load():
