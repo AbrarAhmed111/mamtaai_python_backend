@@ -1,5 +1,5 @@
 ---
-title: MamtaAI Baby Cry Classifier API
+title: MumtaAI Baby Cry Classifier API
 emoji: 👶
 colorFrom: pink
 colorTo: purple
@@ -8,7 +8,7 @@ app_port: 7860
 pinned: false
 ---
 
-# MamtaAI Backend API
+# MumtaAI Backend API
 
 A FastAPI-based backend service for baby cry classification and audio processing using machine learning. This API provides endpoints for audio preprocessing, feature extraction, and ML-powered cry type prediction.
 
@@ -808,7 +808,7 @@ The API can be deployed to any platform that supports Python:
 
 ## 📝 License
 
-This project is part of the MamtaAI application.
+This project is part of the MumtaAI application.
 
 ## 🤝 Contributing
 
@@ -834,4 +834,4 @@ For issues and questions:
 
 ---
 
-**Built with FastAPI ❤️ | MamtaAI Backend API**
+**Built with FastAPI ❤️ | MumtaAI Backend API**

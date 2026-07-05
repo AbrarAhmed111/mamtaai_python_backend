@@ -1,8 +1,8 @@
-# MamtaAI FastAPI Backend - Request Flow
+# MumtaAI FastAPI Backend - Request Flow
 
 ## 📋 Overview
 
-The MamtaAI backend is a FastAPI application that processes baby cry audio files and classifies them using machine learning. The system follows a clean architecture pattern with clear separation between API routes, business logic, and data processing.
+The MumtaAI backend is a FastAPI application that processes baby cry audio files and classifies them using machine learning. The system follows a clean architecture pattern with clear separation between API routes, business logic, and data processing.
 
 ## 🏗️ Architecture
 
