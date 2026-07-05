@@ -29,5 +29,5 @@ ENV ENVIRONMENT=production
 
 EXPOSE 8000
 
-# Railway injects $PORT at runtime — bind uvicorn to it
-CMD ["sh", "-c", "uvicorn api.main:app --host 0.0.0.0 --port ${PORT:-8000}"]
+# Python reads $PORT itself (os.getenv) — avoids shell expansion issues
+CMD ["python", "start_api_server.py"]

@@ -30,14 +30,17 @@ Press CTRL+C to stop the server
 ═══════════════════════════════════════════════════════════
     """)
     
-    # Get port from environment or use default
+    # Get port from environment or use default (Railway injects $PORT)
     port = int(os.getenv("PORT", 8000))
-    
+
+    # Only hot-reload in development; production must not reload
+    is_dev = os.getenv("ENVIRONMENT", "development") != "production"
+
     uvicorn.run(
         "api.main:app",
         host="0.0.0.0",
         port=port,
-        reload=True,
+        reload=is_dev,
         log_level="info"
     )
 
