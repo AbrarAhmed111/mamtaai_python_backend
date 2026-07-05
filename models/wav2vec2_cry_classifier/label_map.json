@@ -1,0 +1,16 @@
+{
+  "label2id": {
+    "discomfort": 0,
+    "hungry": 1,
+    "overstimulated": 2,
+    "pain": 3,
+    "tired": 4
+  },
+  "id2label": {
+    "0": "discomfort",
+    "1": "hungry",
+    "2": "overstimulated",
+    "3": "pain",
+    "4": "tired"
+  }
+}
