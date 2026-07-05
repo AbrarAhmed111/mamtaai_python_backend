@@ -42,12 +42,14 @@ VAL_SPLIT     = 0.15
 # test = remaining 0.15
 
 BATCH_SIZE    = 4
-GRAD_ACCUM    = 8       # effective batch = 32
+GRAD_ACCUM    = 8       # effective batch = 32 (VRAM-limited, not RAM-limited)
 EPOCHS        = 20
 LR            = 1e-4
 WARMUP_RATIO  = 0.10
 PATIENCE      = 4       # early-stop after N val epochs without improvement
 SEED          = 42
+NUM_WORKERS   = 6       # 32 GB RAM — use more CPU workers for data loading
+CACHE_IN_RAM  = True    # pre-load all 22k files into RAM after first epoch
 
 USE_FP16      = torch.cuda.is_available()
 DEVICE        = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -72,26 +74,31 @@ def load_file_list(dataset_dir: Path) -> tuple[list[str], list[int], dict, dict]
 
 
 class CryDataset(Dataset):
-    def __init__(self, files: list[str], labels: list[int], feature_extractor):
-        self.files    = files
-        self.labels   = labels
+    def __init__(self, files: list[str], labels: list[int], feature_extractor,
+                 cache: dict | None = None):
+        self.files     = files
+        self.labels    = labels
         self.extractor = feature_extractor
+        # Shared RAM cache: path -> preprocessed float32 array (filled lazily)
+        self.cache = cache if cache is not None else {}
 
     def __len__(self):
         return len(self.files)
 
-    def __getitem__(self, idx):
-        path  = self.files[idx]
-        label = self.labels[idx]
-
-        audio, sr = librosa.load(path, sr=SAMPLE_RATE, mono=True)
-
-        # Pad or crop to MAX_SAMPLES
+    def _load_audio(self, path: str) -> np.ndarray:
+        if path in self.cache:
+            return self.cache[path]
+        audio, _ = librosa.load(path, sr=SAMPLE_RATE, mono=True)
         if len(audio) > MAX_SAMPLES:
             audio = audio[:MAX_SAMPLES]
         elif len(audio) < MAX_SAMPLES:
             audio = np.pad(audio, (0, MAX_SAMPLES - len(audio)))
+        if CACHE_IN_RAM:
+            self.cache[path] = audio
+        return audio
 
+    def __getitem__(self, idx):
+        audio = self._load_audio(self.files[idx])
         inputs = self.extractor(
             audio,
             sampling_rate=SAMPLE_RATE,
@@ -100,7 +107,7 @@ class CryDataset(Dataset):
         )
         return {
             "input_values": inputs["input_values"].squeeze(0),
-            "label": torch.tensor(label, dtype=torch.long),
+            "label": torch.tensor(self.labels[idx], dtype=torch.long),
         }
 
 
@@ -154,16 +161,23 @@ def train():
     extractor = AutoFeatureExtractor.from_pretrained(BASE_MODEL)
 
     # 3. Datasets & loaders
-    train_ds = CryDataset(train_files, train_labels, extractor)
-    val_ds   = CryDataset(val_files,   val_labels,   extractor)
-    test_ds  = CryDataset(test_files,  test_labels,  extractor)
+    # Single shared cache so all splits populate the same RAM store
+    ram_cache = {} if CACHE_IN_RAM else None
+    print(f"RAM cache : {'enabled (22k files ~4–6 GB RAM)' if CACHE_IN_RAM else 'disabled'}")
+
+    train_ds = CryDataset(train_files, train_labels, extractor, cache=ram_cache)
+    val_ds   = CryDataset(val_files,   val_labels,   extractor, cache=ram_cache)
+    test_ds  = CryDataset(test_files,  test_labels,  extractor, cache=ram_cache)
 
     train_loader = DataLoader(train_ds, batch_size=BATCH_SIZE, shuffle=True,
-                              collate_fn=collate_fn, num_workers=2, pin_memory=True)
+                              collate_fn=collate_fn, num_workers=NUM_WORKERS,
+                              pin_memory=True, persistent_workers=True)
     val_loader   = DataLoader(val_ds,   batch_size=BATCH_SIZE, shuffle=False,
-                              collate_fn=collate_fn, num_workers=2, pin_memory=True)
+                              collate_fn=collate_fn, num_workers=NUM_WORKERS,
+                              pin_memory=True, persistent_workers=True)
     test_loader  = DataLoader(test_ds,  batch_size=BATCH_SIZE, shuffle=False,
-                              collate_fn=collate_fn, num_workers=2, pin_memory=True)
+                              collate_fn=collate_fn, num_workers=NUM_WORKERS,
+                              pin_memory=True, persistent_workers=True)
 
     # 4. Model
     print(f"Loading model {BASE_MODEL} …")
