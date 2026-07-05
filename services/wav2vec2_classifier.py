@@ -1,23 +1,24 @@
 """
 Inference wrapper for the fine-tuned wav2vec2 cry classifier.
-Loaded automatically by classification.py when models/wav2vec2_cry_classifier/ exists.
+Loaded automatically by streaming.py when models/wav2vec2_cry_classifier/ exists.
 """
 import json
+import threading
 from pathlib import Path
 
 import librosa
 import numpy as np
-import torch
 
 _MODEL_DIR = Path(__file__).parent.parent / "models" / "wav2vec2_cry_classifier"
 
 SAMPLE_RATE = 16_000
-MAX_SAMPLES = 8 * SAMPLE_RATE   # 128 000 — 8 seconds
+MAX_SAMPLES = 8 * SAMPLE_RATE  # 128 000 samples = 8 seconds
 
 _model     = None
 _extractor = None
 _label_map = None
 _device    = None
+_load_lock = threading.Lock()
 
 
 def is_available() -> bool:
@@ -27,6 +28,7 @@ def is_available() -> bool:
 def _load():
     global _model, _extractor, _label_map, _device
 
+    import torch
     from transformers import AutoFeatureExtractor, Wav2Vec2ForSequenceClassification
 
     _device    = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -35,8 +37,11 @@ def _load():
     _model.eval()
     _model.to(_device)
 
-    with open(_MODEL_DIR / "label_map.json") as f:
-        _label_map = json.load(f)
+    try:
+        with open(_MODEL_DIR / "label_map.json") as f:
+            _label_map = json.load(f)
+    except (FileNotFoundError, json.JSONDecodeError) as e:
+        raise RuntimeError(f"[wav2vec2] Failed to load label_map.json: {e}") from e
 
     print(f"[wav2vec2] Loaded from {_MODEL_DIR} on {_device}")
 
@@ -54,10 +59,14 @@ def predict(audio: np.ndarray, sample_rate: int) -> dict:
             "probabilities": {label: float, ...}
         }
     """
+    import torch
+
     global _model, _extractor, _label_map, _device
 
     if _model is None:
-        _load()
+        with _load_lock:
+            if _model is None:  # double-checked locking
+                _load()
 
     # Resample to 16 kHz
     if sample_rate != SAMPLE_RATE:
