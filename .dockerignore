@@ -15,3 +15,6 @@ prepare_all_datasets.py
 reextract_features.py
 retrain_from_feedback.py
 train_model.py
+upload_model_to_hf.py
+# weights are downloaded from HF Hub at runtime, never baked into the image
+models/wav2vec2_cry_classifier/model.safetensors

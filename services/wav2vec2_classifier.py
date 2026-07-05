@@ -1,8 +1,10 @@
 """
 Inference wrapper for the fine-tuned wav2vec2 cry classifier.
-Loaded automatically by streaming.py when models/wav2vec2_cry_classifier/ exists.
+Loaded automatically by streaming.py when the model is available locally or
+downloadable from HuggingFace Hub (set WAV2VEC2_HF_REPO, e.g. "user/repo").
 """
 import json
+import os
 import threading
 from pathlib import Path
 
@@ -10,9 +12,12 @@ import librosa
 import numpy as np
 
 _MODEL_DIR = Path(__file__).parent.parent / "models" / "wav2vec2_cry_classifier"
+_HF_REPO   = os.getenv("WAV2VEC2_HF_REPO", "")
 
 SAMPLE_RATE = 16_000
 MAX_SAMPLES = 8 * SAMPLE_RATE  # 128 000 samples = 8 seconds
+
+_REQUIRED_FILES = ("config.json", "label_map.json", "model.safetensors")
 
 _model     = None
 _extractor = None
@@ -21,12 +26,11 @@ _device    = None
 _load_lock = threading.Lock()
 
 
-def is_available() -> bool:
-    # All three artifacts must exist — config/label_map ship via git but the
-    # 360MB weights file is deployed separately, so its absence means sklearn fallback.
-    required = ("config.json", "label_map.json", "model.safetensors")
-    if not all((_MODEL_DIR / f).exists() for f in required):
-        return False
+def _local_files_complete() -> bool:
+    return all((_MODEL_DIR / f).exists() for f in _REQUIRED_FILES)
+
+
+def _torch_importable() -> bool:
     try:
         import torch  # noqa: F401 — torch not installed on slim deploys
         return True
@@ -34,11 +38,40 @@ def is_available() -> bool:
         return False
 
 
+def is_available() -> bool:
+    # Weights come either from a completed local dir or from HF Hub at first use.
+    if not _torch_importable():
+        return False
+    return _local_files_complete() or bool(_HF_REPO)
+
+
+def _ensure_weights():
+    """Download model files from HuggingFace Hub if not present locally."""
+    if _local_files_complete():
+        return
+    if not _HF_REPO:
+        raise RuntimeError(
+            f"[wav2vec2] Model files missing from {_MODEL_DIR} and WAV2VEC2_HF_REPO is not set"
+        )
+    from huggingface_hub import snapshot_download
+    print(f"[wav2vec2] Downloading weights from HF Hub repo '{_HF_REPO}' ...")
+    snapshot_download(
+        repo_id=_HF_REPO,
+        local_dir=str(_MODEL_DIR),
+        token=os.getenv("HF_TOKEN") or None,  # needed only for private repos
+    )
+    if not _local_files_complete():
+        missing = [f for f in _REQUIRED_FILES if not (_MODEL_DIR / f).exists()]
+        raise RuntimeError(f"[wav2vec2] HF download finished but files missing: {missing}")
+
+
 def _load():
     global _model, _extractor, _label_map, _device
 
     import torch
     from transformers import AutoFeatureExtractor, Wav2Vec2ForSequenceClassification
+
+    _ensure_weights()
 
     _device    = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     _extractor = AutoFeatureExtractor.from_pretrained(str(_MODEL_DIR))

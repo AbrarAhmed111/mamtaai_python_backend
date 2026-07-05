@@ -12,6 +12,15 @@ COPY requirements-prod.txt .
 RUN python -m pip install --upgrade pip setuptools wheel && \
     pip install --no-cache-dir -r requirements-prod.txt
 
+# Optional: wav2vec2 inference support (CPU-only torch keeps the image lean).
+# On Railway, set service variable INSTALL_WAV2VEC2=true to enable, plus
+# WAV2VEC2_HF_REPO / HF_TOKEN so weights download from HuggingFace Hub at startup.
+ARG INSTALL_WAV2VEC2=false
+RUN if [ "$INSTALL_WAV2VEC2" = "true" ]; then \
+        pip install --no-cache-dir torch --index-url https://download.pytorch.org/whl/cpu && \
+        pip install --no-cache-dir transformers huggingface_hub; \
+    fi
+
 # Copy application
 COPY . .
 

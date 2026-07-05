@@ -73,5 +73,6 @@ models/*.joblib
 models/*.h5
 models/*.pb
 models/*.safetensors
+models/**/*.safetensors
 !models/.gitkeep
 datasets/
