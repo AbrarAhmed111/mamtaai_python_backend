@@ -63,27 +63,42 @@ def convert_audio_format(audio_data: bytes, input_format: str = "wav") -> Tuple[
     return y, sr
 
 
-def remove_noise(audio: np.ndarray, sample_rate: int, stationary: bool = False) -> np.ndarray:
+def remove_noise(audio: np.ndarray, sample_rate: int, stationary: bool = False, live_recording: bool = False) -> np.ndarray:
     """
     Remove noise from audio signal.
-    
-    Args:
-        audio: Audio signal array
-        sample_rate: Sample rate of the audio
-        stationary: Whether noise is stationary (True) or non-stationary (False)
-    
-    Returns:
-        Denoised audio array
+
+    When live_recording=True, applies an enhanced pipeline tuned for microphone
+    recordings: bandpass filter to cut room rumble/hiss, noise profile estimated
+    from the first 0.5s of audio, and more aggressive reduction.
     """
-    # Use noisereduce library for noise removal
-    reduced_noise = nr.reduce_noise(
-        y=audio,
-        sr=sample_rate,
-        stationary=stationary,
-        prop_decrease=0.8  # Reduce noise by 80%
-    )
-    
-    return reduced_noise
+    if live_recording:
+        # Bandpass filter: keep 200-4000 Hz (baby cry range), cut room rumble + mic hiss
+        nyquist = sample_rate / 2.0
+        low = max(200.0 / nyquist, 0.01)
+        high = min(4000.0 / nyquist, 0.99)
+        b, a = signal.butter(4, [low, high], btype='band')
+        audio = signal.filtfilt(b, a, audio)
+
+        # Use first 500ms as noise profile (captures room/mic background noise)
+        noise_profile_samples = int(0.5 * sample_rate)
+        noise_clip = audio[:noise_profile_samples] if len(audio) > noise_profile_samples else audio
+
+        reduced = nr.reduce_noise(
+            y=audio,
+            y_noise=noise_clip,
+            sr=sample_rate,
+            stationary=False,
+            prop_decrease=0.92,
+        )
+    else:
+        reduced = nr.reduce_noise(
+            y=audio,
+            sr=sample_rate,
+            stationary=stationary,
+            prop_decrease=0.8,
+        )
+
+    return reduced
 
 
 def segment_audio(audio: np.ndarray, sample_rate: int, segment_length_seconds: float = 1.0) -> List[np.ndarray]:
