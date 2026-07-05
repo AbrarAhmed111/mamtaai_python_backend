@@ -17,6 +17,7 @@ from services.audio import (
     extract_features
 )
 from services.classification import get_model, get_model_metadata
+import services.wav2vec2_classifier as wav2vec2_clf
 
 router = APIRouter(prefix="/streaming", tags=["streaming"])
 
@@ -232,31 +233,41 @@ async def stream_process_audio(
             await asyncio.sleep(0.1)
             
             try:
-                classifier = get_model()
-                model_metadata = get_model_metadata()
-                prediction_result = classifier.predict(features)
-                
+                # Prefer wav2vec2 when fine-tuned model exists
+                if wav2vec2_clf.is_available():
+                    w2v_result = wav2vec2_clf.predict(audio, sample_rate)
+                    prediction_result = {
+                        "predicted_cry_type": w2v_result["predicted_cry_type"],
+                        "confidence_score":   w2v_result["confidence"],
+                        "confidence_scores":  w2v_result["probabilities"],
+                    }
+                    model_info = {"model_type": "wav2vec2", "available": True}
+                else:
+                    classifier   = get_model()
+                    model_info   = get_model_metadata()
+                    prediction_result = classifier.predict(features)
+
                 yield await send_progress(
                     "classification",
                     "Classification completed!",
                     {
                         "progress": 100,
                         "prediction": prediction_result,
-                        "model_info": model_metadata
+                        "model_info": model_info
                     }
                 )
                 await asyncio.sleep(0.1)
-                
+
                 # Final result
                 yield await send_progress(
                     "completed",
                     "Processing complete",
                     {
                         "predicted_cry_type": prediction_result["predicted_cry_type"],
-                        "confidence_score": prediction_result["confidence_score"],
-                        "confidence_scores": prediction_result["confidence_scores"],
+                        "confidence_score":   prediction_result["confidence_score"],
+                        "confidence_scores":  prediction_result["confidence_scores"],
                         "features": features,
-                        "model_info": model_metadata
+                        "model_info": model_info
                     }
                 )
                 
