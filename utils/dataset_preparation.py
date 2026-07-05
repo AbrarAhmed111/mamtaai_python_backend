@@ -365,7 +365,7 @@ def _process_audio_file(
 
 def _compact_features(features: Dict) -> Dict:
     """
-    Remove large arrays from the feature set to keep JSON small and fast to write.
+    Remove large raw arrays (spectrogram matrix, raw coefficients) but keep all summary statistics.
     """
     compact = {}
 
@@ -374,8 +374,12 @@ def _compact_features(features: Dict) -> Dict:
         compact["mfcc"] = {
             "mfcc_mean": mfcc.get("mfcc_mean", []),
             "mfcc_std": mfcc.get("mfcc_std", []),
+            "mfcc_delta_mean": mfcc.get("mfcc_delta_mean", []),
+            "mfcc_delta_std": mfcc.get("mfcc_delta_std", []),
+            "mfcc_delta2_mean": mfcc.get("mfcc_delta2_mean", []),
+            "mfcc_delta2_std": mfcc.get("mfcc_delta2_std", []),
             "num_coefficients": mfcc.get("num_coefficients", 0),
-            "num_frames": mfcc.get("num_frames", 0)
+            "num_frames": mfcc.get("num_frames", 0),
         }
 
     spectrogram = features.get("spectrogram", {})
@@ -383,10 +387,11 @@ def _compact_features(features: Dict) -> Dict:
         compact["spectrogram"] = {
             "magnitude_mean": spectrogram.get("magnitude_mean", 0),
             "magnitude_max": spectrogram.get("magnitude_max", 0),
-            "magnitude_min": spectrogram.get("magnitude_min", 0)
+            "magnitude_min": spectrogram.get("magnitude_min", 0),
         }
 
     if "pitch_frequency" in features:
+        # Keep all scalar/list stats; drop nothing (no raw matrices here)
         compact["pitch_frequency"] = features["pitch_frequency"]
 
     if "duration" in features:

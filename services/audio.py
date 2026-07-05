@@ -63,27 +63,42 @@ def convert_audio_format(audio_data: bytes, input_format: str = "wav") -> Tuple[
     return y, sr
 
 
-def remove_noise(audio: np.ndarray, sample_rate: int, stationary: bool = False) -> np.ndarray:
+def remove_noise(audio: np.ndarray, sample_rate: int, stationary: bool = False, live_recording: bool = False) -> np.ndarray:
     """
     Remove noise from audio signal.
-    
-    Args:
-        audio: Audio signal array
-        sample_rate: Sample rate of the audio
-        stationary: Whether noise is stationary (True) or non-stationary (False)
-    
-    Returns:
-        Denoised audio array
+
+    When live_recording=True, applies an enhanced pipeline tuned for microphone
+    recordings: bandpass filter to cut room rumble/hiss, noise profile estimated
+    from the first 0.5s of audio, and more aggressive reduction.
     """
-    # Use noisereduce library for noise removal
-    reduced_noise = nr.reduce_noise(
-        y=audio,
-        sr=sample_rate,
-        stationary=stationary,
-        prop_decrease=0.8  # Reduce noise by 80%
-    )
-    
-    return reduced_noise
+    if live_recording:
+        # Bandpass filter: keep 200-4000 Hz (baby cry range), cut room rumble + mic hiss
+        nyquist = sample_rate / 2.0
+        low = max(200.0 / nyquist, 0.01)
+        high = min(4000.0 / nyquist, 0.99)
+        b, a = signal.butter(4, [low, high], btype='band')
+        audio = signal.filtfilt(b, a, audio)
+
+        # Use first 500ms as noise profile (captures room/mic background noise)
+        noise_profile_samples = int(0.5 * sample_rate)
+        noise_clip = audio[:noise_profile_samples] if len(audio) > noise_profile_samples else audio
+
+        reduced = nr.reduce_noise(
+            y=audio,
+            y_noise=noise_clip,
+            sr=sample_rate,
+            stationary=False,
+            prop_decrease=0.92,
+        )
+    else:
+        reduced = nr.reduce_noise(
+            y=audio,
+            sr=sample_rate,
+            stationary=stationary,
+            prop_decrease=0.8,
+        )
+
+    return reduced
 
 
 def segment_audio(audio: np.ndarray, sample_rate: int, segment_length_seconds: float = 1.0) -> List[np.ndarray]:
@@ -196,21 +211,27 @@ def preprocess_audio(
 def extract_mfcc(audio: np.ndarray, sample_rate: int, n_mfcc: int = 13) -> Dict:
     """
     Extract MFCC (Mel-Frequency Cepstral Coefficients) features.
-    
+
     Args:
         audio: Audio signal array
         sample_rate: Sample rate of the audio
         n_mfcc: Number of MFCC coefficients to extract
-    
+
     Returns:
         Dictionary containing MFCC features and statistics
     """
     mfccs = librosa.feature.mfcc(y=audio, sr=sample_rate, n_mfcc=n_mfcc)
-    
+    mfcc_delta = librosa.feature.delta(mfccs)
+    mfcc_delta2 = librosa.feature.delta(mfccs, order=2)
+
     return {
         "mfcc_coefficients": mfccs.tolist(),
         "mfcc_mean": np.mean(mfccs, axis=1).tolist(),
         "mfcc_std": np.std(mfccs, axis=1).tolist(),
+        "mfcc_delta_mean": np.mean(mfcc_delta, axis=1).tolist(),
+        "mfcc_delta_std": np.std(mfcc_delta, axis=1).tolist(),
+        "mfcc_delta2_mean": np.mean(mfcc_delta2, axis=1).tolist(),
+        "mfcc_delta2_std": np.std(mfcc_delta2, axis=1).tolist(),
         "num_coefficients": n_mfcc,
         "num_frames": int(mfccs.shape[1])
     }
@@ -263,7 +284,7 @@ def analyze_pitch_and_frequency(audio: np.ndarray, sample_rate: int) -> Dict:
     """
     # Extract pitch using librosa's pitch tracking
     pitches, magnitudes = librosa.piptrack(y=audio, sr=sample_rate)
-    
+
     # Get fundamental frequency (F0)
     pitch_values = []
     for t in range(pitches.shape[1]):
@@ -271,25 +292,30 @@ def analyze_pitch_and_frequency(audio: np.ndarray, sample_rate: int) -> Dict:
         pitch = pitches[index, t]
         if pitch > 0:
             pitch_values.append(pitch)
-    
+
     pitch_values = np.array(pitch_values)
-    
+
     # Calculate dominant frequency
     fft = np.fft.fft(audio)
     freqs = np.fft.fftfreq(len(fft), 1/sample_rate)
     magnitude = np.abs(fft)
-    
+
     # Find dominant frequency (excluding DC component)
     positive_freq_idx = np.where(freqs > 0)[0]
     dominant_freq_idx = positive_freq_idx[np.argmax(magnitude[positive_freq_idx])]
     dominant_frequency = freqs[dominant_freq_idx]
-    
-    # Calculate spectral centroid (brightness)
+
+    # Spectral features
     spectral_centroids = librosa.feature.spectral_centroid(y=audio, sr=sample_rate)[0]
-    
-    # Calculate zero crossing rate
+    spectral_bandwidth = librosa.feature.spectral_bandwidth(y=audio, sr=sample_rate)[0]
+    spectral_rolloff = librosa.feature.spectral_rolloff(y=audio, sr=sample_rate)[0]
+    # n_bands=4 (5 output bands) + fmin=100 keeps all edges below 4kHz Nyquist even for 8kHz audio
+    spectral_contrast = librosa.feature.spectral_contrast(y=audio, sr=sample_rate, n_bands=4, fmin=100.0)  # (5, T)
+    chroma = librosa.feature.chroma_stft(y=audio, sr=sample_rate)  # (12, T)
+    rms = librosa.feature.rms(y=audio)[0]
+
     zcr = librosa.feature.zero_crossing_rate(audio)[0]
-    
+
     result = {
         "pitch_mean": float(np.mean(pitch_values)) if len(pitch_values) > 0 else 0.0,
         "pitch_std": float(np.std(pitch_values)) if len(pitch_values) > 0 else 0.0,
@@ -297,9 +323,21 @@ def analyze_pitch_and_frequency(audio: np.ndarray, sample_rate: int) -> Dict:
         "pitch_max": float(np.max(pitch_values)) if len(pitch_values) > 0 else 0.0,
         "dominant_frequency": float(dominant_frequency),
         "spectral_centroid_mean": float(np.mean(spectral_centroids)),
-        "zero_crossing_rate_mean": float(np.mean(zcr))
+        "spectral_centroid_std": float(np.std(spectral_centroids)),
+        "spectral_bandwidth_mean": float(np.mean(spectral_bandwidth)),
+        "spectral_bandwidth_std": float(np.std(spectral_bandwidth)),
+        "spectral_rolloff_mean": float(np.mean(spectral_rolloff)),
+        "spectral_rolloff_std": float(np.std(spectral_rolloff)),
+        "spectral_contrast_mean": np.mean(spectral_contrast, axis=1).tolist(),  # 7 values
+        "spectral_contrast_std": np.std(spectral_contrast, axis=1).tolist(),    # 7 values
+        "chroma_mean": np.mean(chroma, axis=1).tolist(),    # 12 values
+        "chroma_std": np.std(chroma, axis=1).tolist(),      # 12 values
+        "rms_mean": float(np.mean(rms)),
+        "rms_std": float(np.std(rms)),
+        "zero_crossing_rate_mean": float(np.mean(zcr)),
+        "zero_crossing_rate_std": float(np.std(zcr)),
     }
-    
+
     return result
 
 
