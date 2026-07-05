@@ -243,9 +243,12 @@ async def stream_process_audio(
                     }
                     model_info = {"model_type": "wav2vec2", "available": True}
                 else:
-                    classifier   = get_model()
-                    model_info   = get_model_metadata()
+                    classifier        = get_model()
+                    model_info        = get_model_metadata()
                     prediction_result = classifier.predict(features)
+                    # ensure confidence_scores key always exists
+                    if "confidence_scores" not in prediction_result:
+                        prediction_result["confidence_scores"] = prediction_result.get("confidence_score", {})
 
                 yield await send_progress(
                     "classification",
