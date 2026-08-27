@@ -808,7 +808,19 @@ The API can be deployed to any platform that supports Python:
 
 ## 📝 License
 
-This project is part of the MumtaAI application.
+This backend is open source under the [MIT License](LICENSE).
+
+Copyright (c) 2026 Abrar Ahmed.
+
+The audio processing and cry-classification results are provided for
+informational and educational purposes only. This software is not a medical
+device and must not be used as a substitute for professional medical advice,
+diagnosis, or treatment. Seek qualified medical care for health concerns or
+emergencies.
+
+Third-party dependencies, datasets, and model weights may have separate
+licenses and terms. Check the applicable terms before using or redistributing
+those assets.
 
 ## 🤝 Contributing
 
